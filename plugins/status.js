@@ -2,21 +2,21 @@
  * The status plugin shows status information for each repository.
  */
 var fs = require('fs'),
-    path = require('path'),
-    style = require('../lib/style.js'),
-    run = require('../lib/run.js'),
-    commandRequirements = require('../lib/command-requirements.js');
+  path = require('path'),
+  style = require('../lib/style.js'),
+  run = require('../lib/run.js'),
+  commandRequirements = require('../lib/command-requirements.js');
 
 var exec = require('child_process').exec;
 
 module.exports = function(req, res, next) {
   var cwd = req.path,
-      tags,
-      dirname = path.dirname(cwd).replace(req.gr.homePath, '~') + path.sep,
-      repos = (req.gr.directories ? req.gr.directories : []),
-      pathMaxLen = repos.reduce(function(prev, current) {
-        return Math.max(prev, current.replace(req.gr.homePath, '~').length + 2);
-      }, 0);
+    tags,
+    dirname = path.dirname(cwd).replace(req.gr.homePath, '~') + path.sep,
+    repos = (req.gr.directories ? req.gr.directories : []),
+    pathMaxLen = repos.reduce(function(prev, current) {
+      return Math.max(prev, current.replace(req.gr.homePath, '~').length + 2);
+    }, 0);
 
   function pad(s, len) {
     return (s.toString().length < len ?
@@ -24,7 +24,7 @@ module.exports = function(req, res, next) {
   }
 
   // force human format, makes commandRequirements print out when skipping
-  if (!commandRequirements.git({ format: 'json', path: cwd })) {
+  if (!commandRequirements.git({format: 'json', path: cwd})) {
 
     console.log(
       style(dirname, 'gray') +
@@ -42,11 +42,15 @@ module.exports = function(req, res, next) {
     console.log(
       style('\nin ' + dirname, 'gray') +
       style(path.basename(cwd), 'white') + '\n'
-      );
+    );
 
     run(['git', '-c', 'color.status=always', 'status', '-sb'], cwd, req.done);
   } else {
-    var task = exec('git status --branch --porcelain ', {
+    var branchTask = exec('git symbolic-ref --short HEAD', {
+      cwd: cwd,
+      maxBuffer: 1024 * 1024 // 1Mb
+    }, function(e, out, err) {
+      var task = exec('git status --branch --porcelain ', {
         cwd: cwd,
         maxBuffer: 1024 * 1024 // 1Mb
       }, function(err, stdout, stderr) {
@@ -56,17 +60,19 @@ module.exports = function(req, res, next) {
 
         //remove the branch info so it isn't counted as a change
         var branchInfo = lines.shift();
+        var branchName = out.trim();
 
         // parse
         var behind = (branchInfo || '').match(/(\[.+\])/g) || '',
-            modified = (lines.length > 0 ?
+          modified = (lines.length > 0 ?
               lines.length + ' modified' :
               'Clean'
-            );
+          );
         console.log(
           style(dirname, 'gray') +
           style(path.basename(cwd), 'white') + pad(dirname + path.basename(cwd), pathMaxLen) + ' ' +
           style(modified, (lines.length > 0 ? 'red' : 'green')) + pad(modified, 14) +
+          style(branchName, 'white') + pad(branchName, 14) +
           behind + pad(behind, 14) +
           tags.map(function(s) { return '@' + s; }).join(' ')
         );
@@ -78,5 +84,6 @@ module.exports = function(req, res, next) {
         }
         req.done();
       });
+    })
   }
 };
